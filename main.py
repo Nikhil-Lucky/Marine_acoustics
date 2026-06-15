@@ -1,50 +1,105 @@
-import pandas as pd
-from natsort import natsort_keygen
+import sys
+from pathlib import Path
+
+parent_dir = str(Path(__file__).resolve().parent.parent)
+
+sys.path.insert(1, parent_dir)
+
+import os
+import numpy as np
+import soundfile as sf
+import joblib
+import tensorflow_hub as hub
+import tensorflow as tf
 import Sampling_and_Processing
 import embeddings_extractor
-import numpy as np
-
-normalize = 0.0
-splice = 1.0
-
-wav_file_path = '/home/masood/Desktop/code/marine_acoustics/train_audio_files/'
-normalized_positive_clip_file_path = '/home/masood/Desktop/code/marine_acoustics/normalized_positive_clips/'
-spliced_negative_clip_file_path = '/home/masood/Desktop/code/marine_acoustics/spliced_negative_clips/'
-
-positive_metadata = {}
-negative_metadata = {}
-
-'''
-df_positive = Sampling_and_Processing.sort_csv(1.0)
-df_negative = Sampling_and_Processing.sort_csv(0.0)
-
-negative_metadata = Sampling_and_Processing.init_metadata(negative_metadata, df_negative, 0.0)
-print(negative_metadata.get('64025.wav'))
-
-negative_metadata = Sampling_and_Processing.process_metadata(negative_metadata, splice)
-print(negative_metadata.get('64025.wav'))
 
 
-print()
+path = '/home/masood/Desktop/code/marine_acoustics/inference/inference_input/'
+name = 'OS_7_05_2019_08_24_00_.wav'
+o_path = '/home/masood/Desktop/code/marine_acoustics/inference/inference_output/'
+ 
 
-positive_metadata = Sampling_and_Processing.init_metadata(positive_metadata, df_positive, 2.1)
-print(positive_metadata.get('64025.wav'))
+t_path = path+name
 
-positive_metadata = Sampling_and_Processing.process_metadata(positive_metadata, normalize)
-print(positive_metadata.get('64025.wav'))
 
-Sampling_and_Processing.chop_and_resample(positive_metadata, wav_file_path, normalized_positive_clip_file_path)
-Sampling_and_Processing.chop_and_resample(negative_metadata, wav_file_path, spliced_negative_clip_file_path)
+def load_model():
+    clf = joblib.load('./LR_model.joblib')
+    scaler = joblib.load('./scaler.joblib')
+    return clf, scaler
 
-inf = embeddings_extractor.load_perch()
-embeddings,labels = embeddings_extractor.extract_embeddings(normalized_positive_clip_file_path, spliced_negative_clip_file_path, inf)
 
-np.save('Embeddings.npy', embeddings)
-np.save('Labels.npy', labels)
-'''
+def start_pipeline(inference_dict, inference_function, clf, scaler, spliced_audio_folder = '/home/masood/Desktop/code/marine_acoustics/inference/inference_input/'):
+    print("\nStarting Orca detection pipeline...")
+    print("-" * 40)
 
-embeddings = np.load('Embeddings.npy')
-labels = np.load('Labels.npy')
-embeddings_extractor.train_Lregression_model(embeddings, labels)
+    for video_name, chunks in inference_dict.items():
+        for start, end in chunks:
+            base_name = os.path.basename(video_name)
+
+            if base_name.lower().endswith('.wav'):
+                base_name = base_name[:-4]
+
+            if start == int(start):
+                start_str = str(int(start))     
+            else:
+                start_str = str(start).replace('.', '_') 
+            
+            filename = f"{base_name}__{start_str}.wav"
+            filepath = spliced_audio_folder+filename
+            
+            if not os.path.exists(filepath):
+                print(f"Warning: Could not find {filename}")
+                continue
+            
+            audio, sr = sf.read(filepath)
+            if len(audio.shape) > 1:
+                audio = np.mean(audio, axis=1) 
+            waveform = audio.astype(np.float32)
+        
+            model_outputs = inference_function(inputs=waveform[np.newaxis, :])
+            raw_embedding = model_outputs['embedding'].numpy()[0]
+        
+            scaled_embedding = scaler.transform(raw_embedding.reshape(1, -1))
+        
+            prediction = clf.predict(scaled_embedding)[0]
+            probabilities = clf.predict_proba(scaled_embedding)[0]
+        
+            if prediction == 1:
+                confidence = probabilities[1] * 100
+                print(f"ORCA detected with confidence of {confidence:.1f}%! ")
+                print(f"   Video: {video_name}")
+                print(f"   Timestamp: {start}s - {end}s")
+
+
+tf.experimental.numpy.experimental_enable_numpy_behavior()
+inference_function = embeddings_extractor.load_perch()
+X, Y = load_model()
+while(True):
+    x = input("enter the name")
+
+    if(x.casefold() == 'exit'):
+        break
+
+    Path = path+x
+
+    inference_dict = {}
+
+    inference_dict = Sampling_and_Processing.splice_video(Path)
+
+    y = input("Does the file need to be spliced?")
+    if(y.casefold() == 'yes'):
+        Sampling_and_Processing.chop_and_resample(inference_dict, path, o_path)
+
+    start_pipeline(inference_dict, inference_function, X, Y)
+
+
+
+
+
+
+
+
+
 
 

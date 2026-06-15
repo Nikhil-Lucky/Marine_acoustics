@@ -161,8 +161,6 @@ def chop_and_resample(audio_dict, input_dir, output_dir):
        
  
         try:
-            # 1. LOAD AND RESAMPLE THE ENTIRE FILE ONCE
-            # This prevents resampling artifacts and reduces disk reads
             print(f"Loading and resampling {filename} into memory...")
             y_full, sr = librosa.load(input_path, sr=TARGET_SR)
 
@@ -178,7 +176,7 @@ def chop_and_resample(audio_dict, input_dir, output_dir):
                 y_segment = y_full[start_sample:end_sample]
 
                 start_str = f"{int(start)}" if start.is_integer() else f"{start}".replace('.', '_')
-                output_filename = f"{base_name}{start_str}.wav"
+                output_filename = f"{base_name}__{start_str}.wav"
                 output_path = os.path.join(output_dir, output_filename)
 
                 sf.write(output_path, y_segment, TARGET_SR)
@@ -188,3 +186,36 @@ def chop_and_resample(audio_dict, input_dir, output_dir):
 
         except Exception as e:
             print(f"Error processing {filename}: {e}")
+
+def split_tuple(input_tuples):
+    result = []
+    step = 2.5
+    size = 4.0
+
+    for start, end in input_tuples:
+        current_start = float(start)
+        end = float(end)
+        added = False
+        
+        while current_start + size <= end:
+            result.append((current_start, current_start + size))
+            added = True
+            current_start += step
+            
+        if not added:
+            result.append((end - size, end))
+        else:
+            last_end = (current_start - step) + size
+            if last_end < end:
+                result.append((end - size, end))
+
+    return result
+
+
+def splice_video(p):
+    duration = librosa.get_duration(path = p)
+    audio_dict = {}
+    audio_dict[p] = split_tuple([(0.0, duration)])
+    return audio_dict
+
+

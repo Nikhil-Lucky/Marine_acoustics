@@ -52,15 +52,15 @@ def extract_embeddings(positive_path, negative_path, inference_function):
     return x,y
 
 
-def train_Lregression_model(embeddings, labels, train_split = 0.8, test_split = 0.2):
+def train_Lregression_model(embeddings, labels, train_split = 0.9, test_split = 0.1):
 
-    x_train, x_test, y_train, y_test = train_test_split(embeddings, labels, test_size=0.2, random_state=42, stratify=labels)
+    x_train, x_test, y_train, y_test = train_test_split(embeddings, labels, test_size=0.1, random_state=42, stratify=labels)
     scaler = StandardScaler()
     x_train_scaled = scaler.fit_transform(x_train)
     x_test_scaled = scaler.transform(x_test)
 
     print("Training the classifier...")
-    clf = LogisticRegression(max_iter=1000, random_state=42)
+    clf = LogisticRegression(max_iter=1200, random_state=42)
     clf.fit(x_train_scaled, y_train)
     print("Training complete!\n")
 
@@ -71,3 +71,5 @@ def train_Lregression_model(embeddings, labels, train_split = 0.8, test_split = 
     print(confusion_matrix(y_test, y_pred))
     print("\n=== Classification Report ===")
     print(classification_report(y_test, y_pred, target_names=['Negative (0)', 'Orca (1)']))
+
+    return clf, scaler

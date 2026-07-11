@@ -3,6 +3,10 @@ import soundfile as sf
 import os
 import pandas as pd
 from natsort import natsort_keygen
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm import tqdm
 
 def init_metadata(metadata, csv_data, merge_window):
 
@@ -218,4 +222,36 @@ def splice_video(p):
     audio_dict[p] = split_tuple([(0.0, duration)])
     return audio_dict
 
-
+def convert_audio_to_spectrograms(input_dir, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    
+    valid_extensions = ('.wav', '.mp3', '.m4a', '.flac', '.ogg')
+    audio_files = [f for f in os.listdir(input_dir) if f.lower().endswith(valid_extensions)]
+    
+    print(f"Processing {len(audio_files)} files from '{input_dir}'...")
+    
+    for file_name in tqdm(audio_files):
+        input_path = os.path.join(input_dir, file_name)
+        
+        base_name = os.path.splitext(file_name)[0]
+        output_path = os.path.join(output_dir, f"{base_name}.png")
+        
+        try:
+            y, sr = librosa.load(input_path, sr=None)
+            
+            S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, hop_length=512)
+            
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            
+            fig, ax = plt.subplots(figsize=(2.24, 2.24), dpi=100)
+            
+            fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+            ax.axis('off')
+            
+            librosa.display.specshow(S_dB, sr=sr, hop_length=512, cmap='viridis', ax=ax)
+            
+            plt.savefig(output_path, dpi=100, bbox_inches='tight', pad_inches=0)
+            plt.close(fig) 
+            
+        except Exception as e:
+            print(f"Error processing {file_name}: {e}")
